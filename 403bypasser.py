@@ -1,6 +1,10 @@
 import requests, sys, argparse, validators, os, tldextract
 from colorama import init, Fore, Style
 from pyfiglet import Figlet
+import urllib3
+
+# Disable warnings
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # INITIALISE COLORAMA
 init()
@@ -22,6 +26,7 @@ parser.add_argument("-u", "--url", type=str, help="single URL to scan, ex: http:
 parser.add_argument("-U", "--urllist", type=str, help="path to list of URLs, ex: urllist.txt")
 parser.add_argument("-d", "--dir", type=str, help="Single directory to scan, ex: /admin", nargs="?", const="/")
 parser.add_argument("-D", "--dirlist", type=str, help="path to list of directories, ex: dirlist.txt")
+parser.add_argument("--disable-tls-checks", action="store_false", dest="tls_verify", help="Disable SSL certificate verification")
 
 args = parser.parse_args()
 # HANDLE ARGUMENTS -- END
@@ -144,11 +149,12 @@ class PathRepository():
 
 
 class Query():
-    def __init__(self, url, dir, dirObject):
+    def __init__(self, url, dir, dirObject, tls_verify):
         self.url = url
         self.dir = dir          # call pathrepo by this
         self.dirObject = dirObject
         self.domain = tldextract.extract(self.url).domain
+        self.tls_verify = tls_verify
     
     
     
@@ -174,7 +180,7 @@ class Query():
     def manipulateRequest(self):
         print((" Target URL: " + self.url + "\tTarget Path: " + self.dir + " ").center(121, "="))
         results = []
-        p = requests.post(self.url + self.dir)
+        p = requests.post(self.url + self.dir, verify=self.tls_verify)
         
         colour = self.checkStatusCode(p.status_code)
         reset = Style.RESET_ALL
@@ -199,7 +205,7 @@ class Query():
         line_width = 100
         
         for path in self.dirObject.newPaths:
-            r = requests.get(self.url + path)
+            r = requests.get(self.url + path, verify=self.tls_verify)
             
             colour = self.checkStatusCode(r.status_code)
             
@@ -220,7 +226,7 @@ class Query():
         line_width = 100
         
         for header in self.dirObject.newHeaders:
-            r = requests.get(self.url + self.dir, headers=header)
+            r = requests.get(self.url + self.dir, headers=header, verify=self.tls_verify)
             
             colour = self.checkStatusCode(r.status_code)
             reset = Style.RESET_ALL
@@ -238,7 +244,7 @@ class Query():
         
         results_2 = []
         for header in self.dirObject.rewriteHeaders:
-            r = requests.get(self.url, headers=header)
+            r = requests.get(self.url, headers=header, verify=self.tls_verify)
             
             colour = self.checkStatusCode(r.status_code)
             reset = Style.RESET_ALL
@@ -257,9 +263,10 @@ class Query():
 
 
 class Program():
-    def __init__(self, urllist, dirlist):
+    def __init__(self, urllist, dirlist, tls_verify):
         self.urllist = urllist
         self.dirlist = dirlist
+        self.tls_verify = tls_verify
     
     def initialise(self):
         for u in self.urllist:
@@ -270,10 +277,10 @@ class Program():
                     dir_objname = "_rootPath"
                 locals()[dir_objname] = PathRepository(d)
                 domain_name = tldextract.extract(u).domain
-                locals()[domain_name] = Query(u, d, locals()[dir_objname])
+                locals()[domain_name] = Query(u, d, locals()[dir_objname], self.tls_verify)
                 locals()[domain_name].manipulateRequest()
 
 argument = Arguments(args.url, args.urllist, args.dir, args.dirlist)
-program = Program(argument.return_urls(), argument.return_dirs())
+program = Program(argument.return_urls(), argument.return_dirs(), args.tls_verify)
 
 program.initialise()
